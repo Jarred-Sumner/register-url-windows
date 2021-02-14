@@ -1,12 +1,12 @@
 {
   "name": "register-url-windows",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Register a URL protocol for Windows with support for Chrome and Edge",
-  "main": "lib/index.js",
+  "main": "index.js",
   "files": [
     "bin/elevate.cmd",
     "bin/elevate.vbs",
-    "lib/index.js",
+    "index.js",
     "types.d.ts"
   ],
   "types": "types.d.ts",
