@@ -1,0 +1,47 @@
+{
+  "name": "register-url-windows",
+  "version": "1.0.0",
+  "description": "Register a URL protocol for Windows with support for Chrome and Edge",
+  "main": "lib/index.js",
+  "files": [
+    "bin/elevate.cmd",
+    "bin/elevate.vbs",
+    "lib/index.js",
+    "types.d.ts"
+  ],
+  "types": "types.d.ts",
+  "scripts": {
+    "build": "node build.js",
+    "build-cs": "pnpm compile-cs; pnpm copy-cs",
+    "compile-cs": "cd dotnet; dotnet publish -p:PublishSingleFile=true --self-contained true -c Release; cd ../",
+    "copy-cs": "cp ./dotnet/RegisterURLHandler/bin/Release/netcoreapp3.1/win-x64/publish/RegisterURLHandler.exe ./packages/register-url-win64-bin/register-url.exe",
+    "types": "tsc src/index.ts --esModuleInterop --strict false --emitDeclarationOnly --declaration; mv ./src/index.d.ts ./types.d.ts"
+  },
+  "author": "Jarred Sumner (@jarred-sumner)",
+  "optionalDependencies": {
+    "register-url-wint64-bin": "1.0.0"
+  },
+  "keywords": [
+    "url",
+    "protocol",
+    "scheme",
+    "windows",
+    "win32",
+    "url-protoocl",
+    "register-url",
+    "uac",
+    "c#",
+    ".net",
+    "dotnet",
+    "registerProtocolHandler"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^14.14.27",
+    "esbuild": "^0.8.46",
+    "typescript": "^4.2.0-beta"
+  },
+  "dependencies": {
+    "which": "^2.0.2"
+  }
+}

@@ -1,0 +1,4 @@
+dotnet/.vs
+node_modules
+dotnet/RegisterURLHandler/bin
+dotnet/RegisterURLHandler/obj

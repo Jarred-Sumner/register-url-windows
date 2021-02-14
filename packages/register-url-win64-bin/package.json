@@ -1,0 +1,12 @@
+{
+  "name": "register-url-win64-bin",
+  "version": "1.0.0",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "register-url.exe"
+  ],
+  "private": false,
+  "license": "MIT",
+  "author": "Jarred Sumner (@jarred-sumner)"
+}
