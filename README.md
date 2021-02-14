@@ -20,8 +20,6 @@ It uses the a small .NET CLI I wrote to edit the registry with the right values.
 - `HKEY_CURRENT_USER\SOFTWARE\Policies\Microsoft\Edge\ExternalProtocolDialogShowAlwaysOpenCheckbox` (required for `AutoLaunchProtocolsFromOrigins` to work)
 - `HKEY_CURRENT_USER\SOFTWARE\Policies\Microsoft\Edge\AutoLaunchProtocolsFromOrigins`
 
-It will trigger UAC (Administrator privileges request) due to adding a URL protocol.
-
 ```ts
 export type RegistrationRequest = {
   /* path to application to run */
@@ -31,6 +29,7 @@ export type RegistrationRequest = {
   /* protocol to register. valid protocol: "git-peek". invalid protocol: "git-peek://" */
   protocol: string;
   /* list of domain names to allowlist 1-click open in Chrome/Edge */
+  /* Including this will trigger UAC! */
   origins?: string[];
   /* Register the protocol with Windows */
   register: boolean;

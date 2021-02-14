@@ -4,6 +4,7 @@ export declare type RegistrationRequest = {
     protocol: string;
     origins?: string[];
     register: boolean;
+    output?: string;
 };
 export declare type RegistrationResponse = {
     error: false | string;
@@ -12,5 +13,5 @@ export declare type RegistrationResponse = {
     protocol: boolean;
     exception?: Error;
 };
-export declare function installBin(): Promise<unknown>;
+export declare function installBin(requireUAC?: boolean): Promise<unknown>;
 export declare function register(request: RegistrationRequest): Promise<RegistrationResponse>;

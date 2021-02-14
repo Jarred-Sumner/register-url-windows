@@ -4,8 +4,6 @@ using System.IO;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using System.Runtime.InteropServices;
-using System.Security.Permissions;
-using System.Security.Principal;
 
 namespace RegisterURLHandler
 {
@@ -15,15 +13,22 @@ namespace RegisterURLHandler
         [return: MarshalAs(UnmanagedType.Bool)]
         static extern bool IsUserAnAdmin();
 
+        static public string output;
+
+        static void WriteError(string Error) {
+            WriteResponse(JsonConvert.SerializeObject(new { error = Error }));
+        }
+
+        static void WriteResponse(string text)
+        {
+            File.WriteAllText(output, text, new System.Text.UnicodeEncoding());
+        }
+
 
         static void Main(string[] args)
         {
-            if (!RegisterURLHandler.Program.IsUserAnAdmin()) {
-                Console.Out.Write(JsonConvert.SerializeObject( new { error = "Administrator is required."  } ));
-                Environment.Exit(1);
-            }
-
             var obj = JsonConvert.DeserializeObject<HandlerArguments>(args[0]);
+            RegisterURLHandler.Program.output = obj.output;
             var protocol = obj.protocol;
             var appPath = obj.path;
             var appName = obj.name;
@@ -32,13 +37,13 @@ namespace RegisterURLHandler
 
             if (protocol == null)
             {
-                Console.Out.Write(JsonConvert.SerializeObject( new { error = "protocol is required"  } ));
+                RegisterURLHandler.Program.WriteError("protocol is required");
                 Environment.Exit(1);
             }
 
             if (!skipRegister && appPath == null)
             {
-                Console.Out.Write(JsonConvert.SerializeObject(new { error = "path is required" }));
+                RegisterURLHandler.Program.WriteError("path is required");
                 Environment.Exit(1);
             }
 
@@ -51,7 +56,6 @@ namespace RegisterURLHandler
 
             Dictionary<string, bool> registrations = new Dictionary<string, bool>();
             registrations.Add("error", false);
-
 
 
             if (skipRegister)
@@ -76,22 +80,38 @@ namespace RegisterURLHandler
 
 
             var json = JsonConvert.SerializeObject(registrations);
-            Console.Out.Write(json);
+            WriteResponse(json);
+            Environment.Exit(0);
         }
 
         static bool Register(string protocol, string path, string appName)
         {
             if (!File.Exists(path))
             {
-                Console.Error.WriteLine("path does not exist " + path);
+                WriteError("path does not exist " + path);
                 Environment.Exit(1);
             }
 
-            RegistryKey key = Registry.ClassesRoot.OpenSubKey(appName, RegistryKeyPermissionCheck.ReadWriteSubTree);
+
+            RegistryKey key = Registry.CurrentUser;
+            string[] RegKeys = "Software\\Classes".Split('\'');
+            var _regKey = key;
+            foreach (string _key in RegKeys)
+            {
+
+                _regKey = key.OpenSubKey(_key, RegistryKeyPermissionCheck.ReadWriteSubTree);
+                if (_regKey == null)
+                {
+                    _regKey = key.CreateSubKey(_key, RegistryKeyPermissionCheck.ReadWriteSubTree);
+                }
+                key = _regKey;
+            }
+
+            key = key.OpenSubKey(appName, true);
 
             if (key == null)  //if the protocol is not registered yet...we register it
             {
-                key = Registry.ClassesRoot.CreateSubKey(appName, true);
+                key = _regKey.CreateSubKey(appName, true);
             }
 
                 key.SetValue(string.Empty, "URL: " + protocol + " Protocol");
@@ -175,7 +195,13 @@ namespace RegisterURLHandler
 
         static bool registerPolicies(string subkey, string childKey, string protocol, string[] origins)
         {
-            RegistryKey regKey = Registry.CurrentUser   ;
+            if (!RegisterURLHandler.Program.IsUserAnAdmin())
+            {
+                WriteError("Administrator is required.");
+                Environment.Exit(1);
+            }
+
+            RegistryKey regKey = Registry.CurrentUser;
             string[] RegKeys = subkey.Split('\'');
             var _regKey = regKey;
             foreach (string _key in RegKeys)

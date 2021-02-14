@@ -33,71 +33,80 @@ var import_child_process = __toModule(require("child_process"));
 var path = __toModule(require("path"));
 var fs = __toModule(require("fs"));
 var import_which = __toModule(require("which"));
-var ELEVATE_SCRIPT_PATH = path.join(__dirname, "../bin", "elevate", "elevate.cmd");
-async function installBin() {
+var import_util = __toModule(require("util"));
+var import_tmp_promise = __toModule(require("tmp-promise"));
+var exec = import_util.default.promisify(import_child_process.default.exec);
+async function installBin(requireUAC = true) {
   const npm = await import_which.default("npm");
+  const packageName = requireUAC ? "register-url-win64-bin-uac" : "register-url-win64-bin";
   return new Promise((resolve2, reject) => {
-    const child = import_child_process.default.exec(`"${npm}" install register-url-win64-bin@1.0.0`, {cwd: path.resolve(__dirname)}, (err, stdout, stderr) => err ? reject(err) : resolve2({stdout, stderr}));
+    const child = import_child_process.default.exec(`"${npm}" install  ${packageName}@${"1.0.2"} --legacy-peer-deps --production --no-fund --no-audit --no-package-lock --ignore-scripts --no-save`, {cwd: path.resolve(__dirname)}, (err, stdout, stderr) => err ? reject(err) : resolve2({stdout, stderr}));
     child.stdout.pipe(process.stdout);
     child.stdin.pipe(process.stdin);
   });
 }
 async function register(request) {
+  var _a, _b;
+  let uac = ((_b = (_a = request.origins) == null ? void 0 : _a.length) != null ? _b : 0) > 0;
+  let packageName = uac ? "register-url-win64-bin-uac" : "register-url-win64-bin";
   let downloadBin;
   try {
-    downloadBin = require("register-url-win64-bin");
+    downloadBin = require(packageName);
   } catch (exception) {
-    return Promise.reject(`Please install "register-url-win64-bin" into ${path.resolve(__dirname)} before running this function. For convienience, you can call installBin()`);
+    return Promise.reject(`Please install "${packageName}" into ${path.resolve(__dirname)} before running this function. For convienience, you can call installBin()`);
   }
   await fs.promises.access(downloadBin, fs.constants.F_OK);
   if (typeof request.register === "undefined") {
     request.register = true;
   }
-  return new Promise((resolve2, reject) => {
-    import_child_process.default.exec(`"${ELEVATE_SCRIPT_PATH}" "${downloadBin}" ${JSON.stringify(JSON.parse(JSON.stringify(request)))}`, {
-      env: process.env
-    }, (err, stdout, stderr) => {
-      if (err) {
-        resolve2({
-          error: err.message,
-          exception: err,
+  if (!request.output) {
+    const {path: filePath} = await import_tmp_promise.default.file({
+      discardDescriptor: true,
+      postfix: ".json"
+    });
+    request.output = filePath;
+  }
+  request.output = path.resolve(request.output);
+  try {
+    const {stdout, stderr} = await exec(`"${downloadBin}" ${JSON.stringify(JSON.parse(JSON.stringify(request)))}`, {
+      env: process.env,
+      windowsHide: true
+    });
+    let response;
+    try {
+      response = JSON.parse(await fs.promises.readFile(request.output, "utf-8"));
+      if (typeof response !== "object") {
+        throw "Empty response";
+      }
+    } catch (exception) {
+      process.stdout.write("\n" + stdout);
+      if (stderr) {
+        return {
+          error: stderr + " \n\n",
           chrome: false,
           edge: false,
           protocol: false
-        });
-        return;
+        };
+      } else {
+        return {
+          error: stdout,
+          chrome: false,
+          edge: false,
+          protocol: false
+        };
       }
-      let response;
-      try {
-        response = JSON.parse(stdout);
-      } catch (exception) {
-        if (process.env.NODE_ENV === "development") {
-          console.error(exception);
-        }
-        if (stderr) {
-          resolve2({
-            error: stderr,
-            chrome: false,
-            edge: false,
-            protocol: false
-          });
-        } else {
-          resolve2({
-            error: "Unknown error ocurred",
-            chrome: false,
-            edge: false,
-            protocol: false
-          });
-        }
-        return;
-      }
-      if (response.error && !response.error.trim().length) {
-        response.error = false;
-      }
-      if ((stderr == null ? void 0 : stderr.length) && !response.error) {
-        response.error = stderr;
-      }
-      resolve2(response);
+    }
+    if (response.error && !response.error.trim().length) {
+      response.error = false;
+    }
+    return response;
+  } catch (err) {
+    return Promise.resolve({
+      error: err.message,
+      exception: err,
+      chrome: false,
+      edge: false,
+      protocol: false
     });
-  });
+  }
 }

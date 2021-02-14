@@ -2,13 +2,9 @@ import childProcess from "child_process";
 import * as path from "path";
 import * as fs from "fs";
 import which from "which";
-
-const ELEVATE_SCRIPT_PATH = path.join(
-  __dirname,
-  "../bin",
-  "elevate",
-  "elevate.cmd"
-);
+import util from "util";
+import tmp from "tmp-promise";
+const exec = util.promisify(childProcess.exec);
 
 export type RegistrationRequest = {
   /* path to application to run */
@@ -21,6 +17,7 @@ export type RegistrationRequest = {
   origins?: string[];
   /* Register the path */
   register: boolean;
+  output?: string;
 };
 
 export type RegistrationResponse = {
@@ -36,12 +33,16 @@ export type RegistrationResponse = {
   exception?: Error;
 };
 
-export async function installBin() {
+export async function installBin(requireUAC = true) {
   const npm = await which("npm");
+
+  const packageName = requireUAC
+    ? "register-url-win64-bin-uac"
+    : "register-url-win64-bin";
 
   return new Promise((resolve, reject) => {
     const child = childProcess.exec(
-      `"${npm}" install register-url-win64-bin@1.0.0`,
+      `"${npm}" install  ${packageName}@${process.env.UAC_VERSION} --legacy-peer-deps --production --no-fund --no-audit --no-package-lock --ignore-scripts --no-save`,
       { cwd: path.resolve(__dirname) },
       (err, stdout, stderr) => (err ? reject(err) : resolve({ stdout, stderr }))
     );
@@ -53,12 +54,16 @@ export async function installBin() {
 export async function register(
   request: RegistrationRequest
 ): Promise<RegistrationResponse> {
+  let uac = (request.origins?.length ?? 0) > 0;
+  let packageName = uac
+    ? "register-url-win64-bin-uac"
+    : "register-url-win64-bin";
   let downloadBin;
   try {
-    downloadBin = require("register-url-win64-bin");
+    downloadBin = require(packageName);
   } catch (exception) {
     return Promise.reject(
-      `Please install "register-url-win64-bin" into ${path.resolve(
+      `Please install "${packageName}" into ${path.resolve(
         __dirname
       )} before running this function. For convienience, you can call installBin()`
     );
@@ -69,61 +74,67 @@ export async function register(
     request.register = true;
   }
 
-  return new Promise((resolve, reject) => {
-    childProcess.exec(
-      `"${ELEVATE_SCRIPT_PATH}" "${downloadBin}" ${JSON.stringify(
-        JSON.parse(JSON.stringify(request))
-      )}`,
+  if (!request.output) {
+    const { path: filePath } = await tmp.file({
+      discardDescriptor: true,
+      postfix: ".json",
+    });
+
+    request.output = filePath;
+  }
+
+  request.output = path.resolve(request.output);
+
+  try {
+    const { stdout, stderr } = await exec(
+      `"${downloadBin}" ${JSON.stringify(JSON.parse(JSON.stringify(request)))}`,
       {
         env: process.env,
-      },
-      (err, stdout: string, stderr: string) => {
-        if (err) {
-          resolve({
-            error: err.message,
-            exception: err,
-            chrome: false,
-            edge: false,
-            protocol: false,
-          });
-          return;
-        }
-        let response: RegistrationResponse;
-        try {
-          response = JSON.parse(stdout);
-        } catch (exception) {
-          if (process.env.NODE_ENV === "development") {
-            console.error(exception);
-          }
-
-          if (stderr) {
-            resolve({
-              error: stderr,
-              chrome: false,
-              edge: false,
-              protocol: false,
-            });
-          } else {
-            resolve({
-              error: "Unknown error ocurred",
-              chrome: false,
-              edge: false,
-              protocol: false,
-            });
-          }
-          return;
-        }
-
-        if (response.error && !response.error.trim().length) {
-          response.error = false;
-        }
-
-        if (stderr?.length && !response.error) {
-          response.error = stderr;
-        }
-
-        resolve(response);
+        windowsHide: true,
       }
     );
-  });
+    let response: RegistrationResponse;
+
+    try {
+      response = JSON.parse(
+        await fs.promises.readFile(request.output, "utf-8")
+      );
+
+      if (typeof response !== "object") {
+        throw "Empty response";
+      }
+    } catch (exception) {
+      process.stdout.write("\n" + stdout);
+
+      if (stderr) {
+        return {
+          error: stderr + " \n\n",
+          chrome: false,
+          edge: false,
+          protocol: false,
+        };
+      } else {
+        return {
+          error: stdout,
+          chrome: false,
+          edge: false,
+          protocol: false,
+        };
+      }
+    }
+
+    if (response.error && !response.error.trim().length) {
+      response.error = false;
+    }
+
+    return response;
+  } catch (err) {
+    return Promise.resolve({
+      error: err.message,
+      exception: err,
+      chrome: false,
+      edge: false,
+      protocol: false,
+    });
+  }
 }
