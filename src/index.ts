@@ -1,8 +1,7 @@
 import childProcess from "child_process";
-import * as path from "path";
+import findUp from "find-up";
 import * as fs from "fs";
-import which from "which";
-import util from "util";
+import * as path from "path";
 import tmp from "tmp-promise";
 
 export type RegistrationRequest = {
@@ -32,28 +31,45 @@ export type RegistrationResponse = {
   exception?: Error;
 };
 
-export async function installBin(requireUAC = true) {
-  const npm = await which("npm");
+async function getNodeModules(cwd: string) {
+  return path.resolve(
+    await findUp("node_modules", { type: "directory", cwd }),
+    "../"
+  );
+}
 
+export const BINARY_VERSION = process.env.UAC_VERSION;
+export const PACKAGE_NAMES = {
+  win64: "register-url-win64-bin",
+  "win64-uac": "register-url-win64-bin-uac",
+};
+
+export async function installBin(requireUAC = true) {
   const packageName = requireUAC
     ? "register-url-win64-bin-uac"
     : "register-url-win64-bin";
+  const cwd = await getNodeModules(path.resolve(__dirname));
 
   return new Promise((resolve, reject) => {
     const child = childProcess.spawn(
-      `"${npm}"`,
+      "npm",
       [
         "install",
         `${packageName}@${process.env.UAC_VERSION}`,
         `--legacy-peer-deps`,
+        "-g",
         `--production`,
         `--no-fund`,
         `--no-audit`,
         `--no-package-lock`,
         `--ignore-scripts`,
-        `--no-save`,
       ],
-      { cwd: path.resolve(__dirname), detached: false }
+      {
+        cwd,
+        detached: false,
+        shell: true,
+        env: process.env,
+      }
     );
     child.stdout.pipe(process.stdout);
     child.stdin.pipe(process.stdin);
@@ -63,21 +79,30 @@ export async function installBin(requireUAC = true) {
 }
 
 export async function register(
-  request: RegistrationRequest
+  request: RegistrationRequest,
+  binPath: string = null
 ): Promise<RegistrationResponse> {
-  let uac = (request.origins?.length ?? 0) > 0;
-  let packageName = uac
-    ? "register-url-win64-bin-uac"
-    : "register-url-win64-bin";
-  let downloadBin;
-  try {
-    downloadBin = require(packageName);
-  } catch (exception) {
-    return Promise.reject(
-      `Please install "${packageName}" into ${path.resolve(
-        __dirname
-      )} before running this function. For convienience, you can call installBin()`
-    );
+  let downloadBin = binPath;
+
+  if (!binPath) {
+    let uac = (request.origins?.length ?? 0) > 0;
+    let packageName = uac
+      ? "register-url-win64-bin-uac"
+      : "register-url-win64-bin";
+
+    try {
+      downloadBin = require(path.resolve(
+        __dirname,
+        "node_modules",
+        packageName
+      ));
+    } catch (exception) {
+      return Promise.reject(
+        `Please install "${packageName}" into ${path.resolve(
+          __dirname
+        )} before running this function. For convienience, you can call installBin()`
+      );
+    }
   }
 
   await fs.promises.access(downloadBin, fs.constants.F_OK);
@@ -94,58 +119,47 @@ export async function register(
     request.output = filePath;
   }
 
-  request.output = path.resolve(request.output);
+  const filePath = path.resolve(request.output);
+  delete request.output;
 
-  try {
-    const child = childProcess.spawn(
-      `"${downloadBin}"`,
-      [JSON.stringify(request)],
-      {
-        cwd: path.resolve(__dirname),
-        env: process.env,
-        windowsHide: true,
-        detached: false,
-        stdio: "inherit",
-      }
-    );
+  await fs.promises.writeFile(filePath, JSON.stringify(request), "utf-8");
 
-    child.stdout.pipe(process.stdout);
-    child.stdin.pipe(process.stdin);
-
-    return await new Promise<RegistrationResponse>(async (resolve, reject) => {
-      child.once("exit", async () => {
-        let response: RegistrationResponse;
-
-        try {
-          response = JSON.parse(
-            await fs.promises.readFile(request.output, "utf-8")
-          );
-
-          if (typeof response !== "object") {
-            throw "Empty response";
-          }
-        } catch (exception) {
-          response = {
-            error: exception.message,
-            exception,
-            chrome: false,
-            protocol: false,
-            edge: false,
-          };
-        }
-
-        resolve(response);
-      });
-    }).catch((err) => {
-      return Promise.resolve({
-        error: err.message,
-        exception: err,
-        chrome: false,
-        edge: false,
-        protocol: false,
-      });
+  return await new Promise<RegistrationResponse>(async (resolve, reject) => {
+    const child = childProcess.spawn(downloadBin, [filePath], {
+      env: process.env,
+      windowsHide: true,
+      detached: false,
+      shell: true,
+      stdio: "inherit",
     });
-  } catch (err) {
+
+    // child.stdout.pipe(process.stdout);
+    // child.stdin.pipe(process.stdin);
+
+    child.once("exit", async () => {
+      let response: RegistrationResponse;
+
+      try {
+        response = JSON.parse(
+          (await fs.promises.readFile(filePath, "utf-8")).trim()
+        );
+
+        if (typeof response !== "object") {
+          throw "Empty response";
+        }
+      } catch (exception) {
+        response = {
+          error: exception.message,
+          exception,
+          chrome: false,
+          protocol: false,
+          edge: false,
+        };
+      }
+
+      resolve(response);
+    });
+  }).catch((err) => {
     return Promise.resolve({
       error: err.message,
       exception: err,
@@ -153,5 +167,5 @@ export async function register(
       edge: false,
       protocol: false,
     });
-  }
+  });
 }

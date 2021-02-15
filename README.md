@@ -21,37 +21,29 @@ It uses the a small .NET CLI I wrote to edit the registry with the right values.
 - `HKEY_CURRENT_USER\SOFTWARE\Policies\Microsoft\Edge\AutoLaunchProtocolsFromOrigins`
 
 ```ts
-export type RegistrationRequest = {
-  /* path to application to run */
+export declare type RegistrationRequest = {
   path: string;
-  /* name used in registry entry */
   name?: string;
-  /* protocol to register. valid protocol: "git-peek". invalid protocol: "git-peek://" */
   protocol: string;
-  /* list of domain names to allowlist 1-click open in Chrome/Edge */
-  /* Including this will trigger UAC! */
   origins?: string[];
-  /* Register the protocol with Windows */
   register: boolean;
+  output?: string;
 };
-
-export type RegistrationResponse = {
-  /* Was there an error? */
+export declare type RegistrationResponse = {
   error: false | string;
-  /* Did it add to chrome's allowlist? */
   chrome: boolean;
-  /* Did it add to edge's allowlist? */
   edge: boolean;
-  /* Did it register the protocol? */
   protocol: boolean;
-  /* Do we have an exception to report? */
   exception?: Error;
 };
-
-export declare function installBin(): Promise<unknown>;
-
-// This will trigger UAC (Administrator) dialog.
+export declare const BINARY_VERSION: string;
+export declare const PACKAGE_NAMES: {
+  win64: string;
+  "win64-uac": string;
+};
+export declare function installBin(requireUAC?: boolean): Promise<unknown>;
 export declare function register(
-  request: RegistrationRequest
+  request: RegistrationRequest,
+  binPath?: string
 ): Promise<RegistrationResponse>;
 ```

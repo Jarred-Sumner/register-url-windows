@@ -13,5 +13,10 @@ export declare type RegistrationResponse = {
     protocol: boolean;
     exception?: Error;
 };
+export declare const BINARY_VERSION: string;
+export declare const PACKAGE_NAMES: {
+    win64: string;
+    "win64-uac": string;
+};
 export declare function installBin(requireUAC?: boolean): Promise<unknown>;
-export declare function register(request: RegistrationRequest): Promise<RegistrationResponse>;
+export declare function register(request: RegistrationRequest, binPath?: string): Promise<RegistrationResponse>;

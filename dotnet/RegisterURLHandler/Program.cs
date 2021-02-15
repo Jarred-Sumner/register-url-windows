@@ -4,6 +4,7 @@ using System.IO;
 using System.Collections.Generic;
 using Newtonsoft.Json;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace RegisterURLHandler
 {
@@ -17,18 +18,32 @@ namespace RegisterURLHandler
 
         static void WriteError(string Error) {
             WriteResponse(JsonConvert.SerializeObject(new { error = Error }));
+            Console.Error.Write(Error);
         }
 
         static void WriteResponse(string text)
         {
-            File.WriteAllText(output, text, new System.Text.UnicodeEncoding());
+            File.WriteAllText(output, text, Encoding.UTF8);
         }
 
 
         static void Main(string[] args)
         {
-            var obj = JsonConvert.DeserializeObject<HandlerArguments>(args[0]);
-            RegisterURLHandler.Program.output = obj.output;
+            RegisterURLHandler.Program.output = args[0];
+
+            HandlerArguments obj;
+            var input = File.ReadAllText(args[0], Encoding.UTF8);
+            try
+            {
+                obj = JsonConvert.DeserializeObject<HandlerArguments>(input);
+            } catch(Exception exception)
+            {
+                WriteError(exception.ToString() + "\n" + "while reading:\n" + input + "\n from:" + args[0]);
+                Environment.Exit(1);
+                return;
+            }
+            
+
             var protocol = obj.protocol;
             var appPath = obj.path;
             var appName = obj.name;

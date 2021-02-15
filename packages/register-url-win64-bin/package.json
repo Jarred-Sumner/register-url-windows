@@ -1,6 +1,6 @@
 {
   "name": "register-url-win64-bin",
-  "version": "1.0.2",
+  "version": "1.0.7",
   "main": "index.js",
   "files": [
     "index.js",
