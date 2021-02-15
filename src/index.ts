@@ -4,7 +4,6 @@ import * as fs from "fs";
 import which from "which";
 import util from "util";
 import tmp from "tmp-promise";
-const exec = util.promisify(childProcess.exec);
 
 export type RegistrationRequest = {
   /* path to application to run */
@@ -41,13 +40,25 @@ export async function installBin(requireUAC = true) {
     : "register-url-win64-bin";
 
   return new Promise((resolve, reject) => {
-    const child = childProcess.exec(
-      `"${npm}" install  ${packageName}@${process.env.UAC_VERSION} --legacy-peer-deps --production --no-fund --no-audit --no-package-lock --ignore-scripts --no-save`,
-      { cwd: path.resolve(__dirname) },
-      (err, stdout, stderr) => (err ? reject(err) : resolve({ stdout, stderr }))
+    const child = childProcess.spawn(
+      `"${npm}"`,
+      [
+        "install",
+        `${packageName}@${process.env.UAC_VERSION}`,
+        `--legacy-peer-deps`,
+        `--production`,
+        `--no-fund`,
+        `--no-audit`,
+        `--no-package-lock`,
+        `--ignore-scripts`,
+        `--no-save`,
+      ],
+      { cwd: path.resolve(__dirname), detached: false }
     );
     child.stdout.pipe(process.stdout);
     child.stdin.pipe(process.stdin);
+    child.once("exit", resolve);
+    child.once("error", reject);
   });
 }
 
@@ -86,48 +97,54 @@ export async function register(
   request.output = path.resolve(request.output);
 
   try {
-    const { stdout, stderr } = await exec(
-      `"${downloadBin}" ${JSON.stringify(JSON.parse(JSON.stringify(request)))}`,
+    const child = childProcess.spawn(
+      `"${downloadBin}"`,
+      [JSON.stringify(request)],
       {
+        cwd: path.resolve(__dirname),
         env: process.env,
         windowsHide: true,
+        detached: false,
+        stdio: "inherit",
       }
     );
-    let response: RegistrationResponse;
 
-    try {
-      response = JSON.parse(
-        await fs.promises.readFile(request.output, "utf-8")
-      );
+    child.stdout.pipe(process.stdout);
+    child.stdin.pipe(process.stdin);
 
-      if (typeof response !== "object") {
-        throw "Empty response";
-      }
-    } catch (exception) {
-      process.stdout.write("\n" + stdout);
+    return await new Promise<RegistrationResponse>(async (resolve, reject) => {
+      child.once("exit", async () => {
+        let response: RegistrationResponse;
 
-      if (stderr) {
-        return {
-          error: stderr + " \n\n",
-          chrome: false,
-          edge: false,
-          protocol: false,
-        };
-      } else {
-        return {
-          error: stdout,
-          chrome: false,
-          edge: false,
-          protocol: false,
-        };
-      }
-    }
+        try {
+          response = JSON.parse(
+            await fs.promises.readFile(request.output, "utf-8")
+          );
 
-    if (response.error && !response.error.trim().length) {
-      response.error = false;
-    }
+          if (typeof response !== "object") {
+            throw "Empty response";
+          }
+        } catch (exception) {
+          response = {
+            error: exception.message,
+            exception,
+            chrome: false,
+            protocol: false,
+            edge: false,
+          };
+        }
 
-    return response;
+        resolve(response);
+      });
+    }).catch((err) => {
+      return Promise.resolve({
+        error: err.message,
+        exception: err,
+        chrome: false,
+        edge: false,
+        protocol: false,
+      });
+    });
   } catch (err) {
     return Promise.resolve({
       error: err.message,

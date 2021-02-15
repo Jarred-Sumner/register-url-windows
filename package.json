@@ -1,6 +1,6 @@
 {
   "name": "register-url-windows",
-  "version": "1.0.3",
+  "version": "1.0.6",
   "description": "Register a URL protocol for Windows with support for Chrome and Edge",
   "main": "index.js",
   "files": [

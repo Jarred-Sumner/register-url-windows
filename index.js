@@ -33,16 +33,26 @@ var import_child_process = __toModule(require("child_process"));
 var path = __toModule(require("path"));
 var fs = __toModule(require("fs"));
 var import_which = __toModule(require("which"));
-var import_util = __toModule(require("util"));
 var import_tmp_promise = __toModule(require("tmp-promise"));
-var exec = import_util.default.promisify(import_child_process.default.exec);
 async function installBin(requireUAC = true) {
   const npm = await import_which.default("npm");
   const packageName = requireUAC ? "register-url-win64-bin-uac" : "register-url-win64-bin";
   return new Promise((resolve2, reject) => {
-    const child = import_child_process.default.exec(`"${npm}" install  ${packageName}@${"1.0.2"} --legacy-peer-deps --production --no-fund --no-audit --no-package-lock --ignore-scripts --no-save`, {cwd: path.resolve(__dirname)}, (err, stdout, stderr) => err ? reject(err) : resolve2({stdout, stderr}));
+    const child = import_child_process.default.spawn(`"${npm}"`, [
+      "install",
+      `${packageName}@${"1.0.2"}`,
+      `--legacy-peer-deps`,
+      `--production`,
+      `--no-fund`,
+      `--no-audit`,
+      `--no-package-lock`,
+      `--ignore-scripts`,
+      `--no-save`
+    ], {cwd: path.resolve(__dirname), detached: false});
     child.stdout.pipe(process.stdout);
     child.stdin.pipe(process.stdin);
+    child.once("exit", resolve2);
+    child.once("error", reject);
   });
 }
 async function register(request) {
@@ -68,38 +78,43 @@ async function register(request) {
   }
   request.output = path.resolve(request.output);
   try {
-    const {stdout, stderr} = await exec(`"${downloadBin}" ${JSON.stringify(JSON.parse(JSON.stringify(request)))}`, {
+    const child = import_child_process.default.spawn(`"${downloadBin}"`, [JSON.stringify(request)], {
+      cwd: path.resolve(__dirname),
       env: process.env,
-      windowsHide: true
+      windowsHide: true,
+      detached: false,
+      stdio: "inherit"
     });
-    let response;
-    try {
-      response = JSON.parse(await fs.promises.readFile(request.output, "utf-8"));
-      if (typeof response !== "object") {
-        throw "Empty response";
-      }
-    } catch (exception) {
-      process.stdout.write("\n" + stdout);
-      if (stderr) {
-        return {
-          error: stderr + " \n\n",
-          chrome: false,
-          edge: false,
-          protocol: false
-        };
-      } else {
-        return {
-          error: stdout,
-          chrome: false,
-          edge: false,
-          protocol: false
-        };
-      }
-    }
-    if (response.error && !response.error.trim().length) {
-      response.error = false;
-    }
-    return response;
+    child.stdout.pipe(process.stdout);
+    child.stdin.pipe(process.stdin);
+    return await new Promise(async (resolve2, reject) => {
+      child.once("exit", async () => {
+        let response;
+        try {
+          response = JSON.parse(await fs.promises.readFile(request.output, "utf-8"));
+          if (typeof response !== "object") {
+            throw "Empty response";
+          }
+        } catch (exception) {
+          response = {
+            error: exception.message,
+            exception,
+            chrome: false,
+            protocol: false,
+            edge: false
+          };
+        }
+        resolve2(response);
+      });
+    }).catch((err) => {
+      return Promise.resolve({
+        error: err.message,
+        exception: err,
+        chrome: false,
+        edge: false,
+        protocol: false
+      });
+    });
   } catch (err) {
     return Promise.resolve({
       error: err.message,
